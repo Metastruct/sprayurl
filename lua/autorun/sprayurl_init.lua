@@ -1,3 +1,4 @@
+
 //   _____                       _    _ _____  _      
 //  / ____|                     | |  | |  __ \| |     
 // | (___  _ __  _ __ __ _ _   _| |  | | |__) | |     
@@ -7,12 +8,7 @@
 //        | |               __/ |                     
 //        |_|              |___/       By FailCake :D (edunad)               
 
-// Changelog
-// $ Added keyword ban list (client side)
-// $ Added Website whitelist (server side)
-// $ Added Help Menu
-// $ Added Ban Menu
-// $ Spray improvements
+// Queue Retry Fix.
 
 function findInTable(fnd,tbl)
 		
@@ -337,6 +333,7 @@ if CLIENT then
 	ckText.matdata["$vertexalpha"] = 1
 	ckText.matdata["$no_fullbright"] = 1
 
+	ckText.MSG_NONE = 0
 	ckText.MSG_OK = 1
 	ckText.MSG_FAILED = 2
 	ckText.MSG_DOWNLOADREQUEST = 3
@@ -355,10 +352,9 @@ if CLIENT then
 		outline = true,
 	})
 
-	function downloadFailed(reason,name)
+	function downloadFailed(reason)
 		print("[URLSpray] Error : " .. reason)
 		hook.Remove("Think","DL_Text")
-		ckText.SpraysDownloaded[name] = ckText.MSG_FAILED
 	end
 
 	// Heavily based on PAPC3 (CLIENT SIDE)
@@ -369,6 +365,8 @@ if CLIENT then
 			ckText.SpraysDownloaded[url] = ckText.MSG_OK
 			return
 		end 
+		
+		ckText.SpraysDownloaded[url] = ckText.MSG_DOWNLOADREQUEST
 		
 		print("[URLSpray] Downloading Material : " .. url)
 		
@@ -391,8 +389,8 @@ if CLIENT then
 			.contain{
 				position:absolute;
 				top:0px;
-				width:]]..ScrW()..[[px;
-				height:]]..ScrH()..[[px;
+				width:]].. ScrW() ..[[px;
+				height:]].. ScrH() ..[[px;
 				
 				background-image: url(']]..url..[[');
 				background-size:contain;
@@ -408,12 +406,13 @@ if CLIENT then
 	
 		local CDTime = 0
 		local OK = false
-		
+		local LoadTime = CurTime() + 5
 	
 		hook.Add("Think","DL_Text",function()
 
-			if !IsValid(ckText.pnl) then
-				downloadFailed("Panel failed to open!",url)
+			if !IsValid(ckText.pnl) or ckText.pnl == NULL then
+				downloadFailed("Panel failed to open!")
+				ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
 				return
 			end
 			
@@ -423,12 +422,22 @@ if CLIENT then
 				
 				if html_mat == nil then
 					ckText.pnl:Remove()
-					downloadFailed("Failed to get HTML Material!",url)
+					downloadFailed("Failed to get HTML Material!")
+					ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
 					return
+				else
+					OK = true
+					CDTime = CurTime() + 1	
 				end
 				
-				OK = true
-				CDTime = CurTime() + 1
+			end
+			
+			if ckText.pnl:IsLoading() and !OK then
+				if LoadTime < CurTime() then
+					ckText.pnl:Remove()
+					downloadFailed("Exceded Load Time!")
+					ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
+				end
 			end
 			
 			if OK and CDTime < CurTime() then
@@ -506,14 +515,13 @@ if CLIENT then
 				
 				local v = ckText.SpraysQueue[1]
 				
-				if v.TEXT == nil then
+				if v == nil || v.TEXT == nil then
 					table.remove(ckText.SpraysQueue,1)
 					return
 				end
 				
-				if ckText.SpraysDownloaded[v.TEXT] == 0 then
+				if ckText.SpraysDownloaded[v.TEXT] == ckText.MSG_NONE then
 					ckText.SpraysDownloaded[v.TEXT] = ckText.MSG_DOWNLOADREQUEST
-					print("Downloading Texture")
 					textureDLL(v.TEXT,false) // No Override.
 				end
 				
@@ -534,9 +542,11 @@ if CLIENT then
 						
 						sound.Play( "player/sprayer.wav", v.SprayPos,75,100,0.3)
 						table.remove(ckText.SpraysQueue,1)
+						print("[URLSpray] Sprayed Texture : " .. v.TEXT)
+						
 	   				else
 	   					print("[URLSpray] Texture still missing, redownloading.")
-		   				ckText.SpraysDownloaded[v.TEXT] = 0
+		   				ckText.SpraysDownloaded[v.TEXT] = ckText.MSG_NONE
 		   				continue
 		   			end
 			   
@@ -546,15 +556,15 @@ if CLIENT then
 					   	if v.Attempts > 0 then
 								
 							v.Attempts = v.Attempts - 1	
-							v.CoolDOWN = CurTime() + 1
-							ckText.SpraysDownloaded[v.TEXT] = 0
+							v.CoolDOWN = CurTime() + 2
+							ckText.SpraysDownloaded[v.TEXT] = ckText.MSG_NONE
 							v.Retry = true
 								
 							continue
 						else
 							print("[SprayURL] Failed to create Spray (ID : " .. v.TEXT .. ")")
 							table.remove(ckText.SpraysQueue,1)
-							ckText.SpraysDownloaded[v.TEXT] = 0
+							ckText.SpraysDownloaded[v.TEXT] = ckText.MSG_NONE
 							continue
 						end
 					end
@@ -595,7 +605,7 @@ if CLIENT then
 			CoolDOWN = 0
 		})
 		
-		ckText.SpraysDownloaded[Texture] = 0
+		ckText.SpraysDownloaded[Texture] = ckText.MSG_NONE
 		
 	end)
 	
@@ -653,7 +663,8 @@ if SERVER then
 		"steamusercontent.com/", // Works
 		"fc01.deviantart.net/", // Works
 		"9cache.com/", // Works
-		"2.media.dorkly.cvcdn.com/" // WOrks
+		"2.media.dorkly.cvcdn.com/", // Works
+		"media.tumblr" // Works
 	}
 	
 	// Steam is silly and doesnt have a format.
