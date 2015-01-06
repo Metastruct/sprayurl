@@ -1,4 +1,3 @@
-
 //   _____                       _    _ _____  _      
 //  / ____|                     | |  | |  __ \| |     
 // | (___  _ __  _ __ __ _ _   _| |  | | |__) | |     
@@ -8,7 +7,13 @@
 //        | |               __/ |                     
 //        |_|              |___/       By FailCake :D (edunad)               
 
-// Queue Retry Fix.
+
+// Changelog
+// $ If image is not found, it will display a 404image.
+// $ Added sprayurl_enablewhitelist to server
+// $ Added quickspray by doing sprayurl "<link>"
+// $ Added sprayurl_enablewhitelist to enable / disable whitelist, its now disabled by default! Yay freedom
+// $ Added sprayurl_weblist to check what websites are allowed if whitelist is enabled.
 
 function findInTable(fnd,tbl)
 		
@@ -337,8 +342,10 @@ if CLIENT then
 	ckText.MSG_OK = 1
 	ckText.MSG_FAILED = 2
 	ckText.MSG_DOWNLOADREQUEST = 3
-	
+	ckText.MSG_ABORT = 4
+
 	ckText.BannedKeywords = ckText.BannedKeywords or {}
+	ckText.WhitelistRequestCD = ckText.WhitelistRequestCD or 0
 	
 	// Load Banned Keywords
 	loadKeywords()
@@ -353,31 +360,31 @@ if CLIENT then
 	})
 
 	function downloadFailed(reason)
-		print("[URLSpray] Error : " .. reason)
+		print("[SprayURL] Error : " .. reason)
 		hook.Remove("Think","DL_Text")
 	end
 
 	// Heavily based on PAPC3 (CLIENT SIDE)
 	function textureDLL(url,override)
-		
+	
 		if !override and ckText.cachedMaterials[url] != nil then
-			print("[URLSpray] Material ".. url .. " already downloaded.")
+			print("[SprayURL] Material ".. url .. " already downloaded.")
 			ckText.SpraysDownloaded[url] = ckText.MSG_OK
 			return
 		end 
 		
 		ckText.SpraysDownloaded[url] = ckText.MSG_DOWNLOADREQUEST
 		
-		print("[URLSpray] Downloading Material : " .. url)
+		print("[SprayURL] Downloading Material : " .. url)
 		
 		if IsValid(ckText.pnl) then
 			ckText.pnl:Remove()
 		end
 		
-		ckText.pnl = vgui.Create("DHTML")
+		ckText.pnl = vgui.Create("HTML")
 		ckText.pnl:SetVisible(true)
 		ckText.pnl:SetSize(ScrW(), ScrH())
-		ckText.pnl:SetPos(ScrW()-1, ScrH()-1)
+		ckText.pnl:SetPos(ScrW()-1, ScrH()-1) 
 		ckText.pnl:SetHTML([[
 		<html>
 		<style type="text/css">
@@ -388,26 +395,33 @@ if CLIENT then
 			
 			.contain{
 				position:absolute;
-				top:0px;
+				top:-1px;
+				left:-1px;
 				width:]].. ScrW() ..[[px;
 				height:]].. ScrH() ..[[px;
-				
-				background-image: url(']]..url..[[');
-				background-size:contain;
-				background-repeat:no-repeat;
-				
 			}
+			
+			.contain img{
+				width:100%;
+			}
+			
+			img[src='Error.src']{
+			    display: none;
+			}
+		
 		</style>		
-		<body>
-			<div class="contain"></div>
-		</body>
+			<body>
+				<div class="contain">
+					<img src="]]..url..[[" alt="" onerror="this.src='https://dl.dropboxusercontent.com/u/6696045/applications/imgNotFound.png'" />
+				</div>
+			</body>
 		</html>
 		]])
 	
 		local CDTime = 0
 		local OK = false
 		local LoadTime = CurTime() + 5
-	
+
 		hook.Add("Think","DL_Text",function()
 
 			if !IsValid(ckText.pnl) or ckText.pnl == NULL then
@@ -443,15 +457,24 @@ if CLIENT then
 			if OK and CDTime < CurTime() then
 				
 				local vertex_mat = CreateMaterial(url, ckText.shaderType,ckText.matdata )
+				
 				local textur = html_mat:GetTexture("$basetexture")
 							
 				textur:Download()
 				vertex_mat:SetTexture("$basetexture", textur)	
 				textur:Download()
 				
-				ckText.cachedMaterials[url] = CreateMaterial(url, ckText.shaderType,ckText.matdata)
-				ckText.cachedMaterials[url]:SetTexture("$basetexture", textur)	
+				local mst = CreateMaterial(url, ckText.shaderType,ckText.matdata)
+				mst:SetTexture("$basetexture", textur)
 				
+				if mst == nil or mst:Width() <= 0 or mst:Height() <= 0 or mst:IsError( ) then
+					ckText.pnl:Remove()
+					downloadFailed("Image Error or too small!")
+					ckText.SpraysDownloaded[url] = ckText.MSG_ABORT
+					return
+				end
+
+				ckText.cachedMaterials[url] = mst
 				ckText.SpraysDownloaded[url] = ckText.MSG_OK
 				
 			    ckText.pnl:Remove()
@@ -542,10 +565,10 @@ if CLIENT then
 						
 						sound.Play( "player/sprayer.wav", v.SprayPos,75,100,0.3)
 						table.remove(ckText.SpraysQueue,1)
-						print("[URLSpray] Sprayed Texture : " .. v.TEXT)
+						print("[SprayURL] Sprayed Texture : " .. v.TEXT)
 						
 	   				else
-	   					print("[URLSpray] Texture still missing, redownloading.")
+	   					print("[SprayURL] Texture still missing, redownloading.")
 		   				ckText.SpraysDownloaded[v.TEXT] = ckText.MSG_NONE
 		   				continue
 		   			end
@@ -564,11 +587,18 @@ if CLIENT then
 						else
 							print("[SprayURL] Failed to create Spray (ID : " .. v.TEXT .. ")")
 							table.remove(ckText.SpraysQueue,1)
-							ckText.SpraysDownloaded[v.TEXT] = ckText.MSG_NONE
+							table.remove(ckText.SpraysDownloaded,v.TEXT)
 							continue
 						end
 					end
 			
+				elseif ckText.SpraysDownloaded[v.TEXT] == ckText.MSG_ABORT then
+				
+					table.remove(ckText.SpraysQueue,1)
+					table.remove(ckText.SpraysDownloaded,v.TEXT)
+					
+					continue
+				
 				end
 			end
 		end
@@ -614,16 +644,55 @@ if CLIENT then
 		local msg = net.ReadString()
 		chat.AddText(Color(255,0,0), "[SprayURL] ",Color(255,255,255), msg )
 	end)
+	
+	net.Receive( "whitelistSend", function(len, ply) 
+		local tbl = net.ReadTable()
+		if tbl == nil then return end
+		if #tbl > 0 then
+			
+			chat.AddText(Color(255,0,0), "[SprayURL] ",Color(255,255,255), "==== Allowed Websites ====" )
+			for tf,te in pairs(tbl) do
+				chat.AddText(Color(255,255,255), te )
+			end
+			chat.AddText(Color(255,255,255), "==== ============ ====" )
+		end
+	end)
 
-	concommand.Add("sprayurl",function(ply)
+	concommand.Add("sprayurl",function(ply,cmdd,args)
+		
 		net.Start("sprayRequest")
-		net.WriteString(GetConVar( "sprayURL_texture" ):GetString()) // URL
+			
+			local Quicky = false
+			
+			if args != nil && #args > 0 then
+				if args[1] != "" then
+					Quicky = true
+				end
+			end
+		
+			if Quicky then
+				net.WriteString(args[1]) // URL	
+			else
+				net.WriteString(GetConVar( "sprayURL_texture" ):GetString()) // URL		
+			end
+		
 		net.SendToServer()
+		
 	end)
 	
 	concommand.Add("sprayurl_reloadkeywords",function(ply)
 		loadKeywords()
 		chat.AddText(Color(255,0,0), "[SprayURL] ",Color(255,255,255), "Keywords Reloaded!" )
+	end)
+	
+	concommand.Add("sprayurl_weblist",function(ply)
+		if ckText.WhitelistRequestCD < CurTime() then
+			net.Start("whitelistRequest")
+			net.SendToServer()
+			ckText.WhitelistRequestCD = CurTime() + 25
+		else
+			chat.AddText(Color(255,0,0), "[SprayURL] ",Color(255,255,255), "Wait ".. math.Round(math.abs(CurTime() - ckText.WhitelistRequestCD)) .. " seconds!")
+		end
 	end)
 	
 	concommand.Add("sprayurl_clearchache",function(ply,cmdd,args)
@@ -645,11 +714,14 @@ if SERVER then
 	if not plymeta then Error("FAILED TO FIND PLAYER TABLE") return end
 
 	CreateConVar( "sprayurl_plyCooldown", "15", FCVAR_ARCHIVE || FCVAR_SERVER_CAN_EXECUTE, "Sets the Cooldown for sprayURL to the players" )
+	CreateConVar( "sprayurl_enablewhitelist", "0", FCVAR_ARCHIVE || FCVAR_SERVER_CAN_EXECUTE, "Enable / Disable Website whitelist." )
 
 	util.AddNetworkString( "sprayURL" )
 	util.AddNetworkString( "sprayRequest" )
 	util.AddNetworkString( "sprayWarning" )
-	
+	util.AddNetworkString( "whitelistRequest" )
+	util.AddNetworkString( "whitelistSend" )
+
 	SprayURL = SprayURL or {}
 	SprayURL.PlayerSpray = SprayURL.PlayerSpray or {}
 	
@@ -664,7 +736,10 @@ if SERVER then
 		"fc01.deviantart.net/", // Works
 		"9cache.com/", // Works
 		"2.media.dorkly.cvcdn.com/", // Works
-		"media.tumblr" // Works
+		"media.tumblr", // Works
+		
+		// Requested Whitelists
+		"photobucket"
 	}
 	
 	// Steam is silly and doesnt have a format.
@@ -682,8 +757,18 @@ if SERVER then
 	    jpe = true,
 	    pns = true,
 	    pgm = true,
-	    tga = true
+	    tga = true,
+	    gif = true
 	}
+	
+	net.Receive( "whitelistRequest", function(len, ply)
+		if GetConVarNumber( "sprayurl_enablewhitelist" ) then
+			if SprayURL.AllowedWebsites == nil || #SprayURL.AllowedWebsites <= 0 then return end
+			net.Start("whitelistSend")
+				net.WriteTable(SprayURL.AllowedWebsites)
+			net.Send(ply)
+		end
+	end)
 	
 	net.Receive( "sprayRequest", function(len, ply)
 		
@@ -692,16 +777,16 @@ if SERVER then
 		local URL = net.ReadString()
 		local extension = URL:lower():sub(-4)
 		
-		if findInTable(URL,SprayURL.AllowedWebsites) then
+		if findInTable(URL,SprayURL.AllowedWebsites) || GetConVarNumber( "sprayurl_enablewhitelist" ) == 0 then
 			if !extension:sub(1,1) == "." or !SprayURL.AllowedFormats[extension:sub(2)] and !findInTable(URL,SprayURL.CustomFormats) then
 				net.Start("sprayWarning")
 						net.WriteString("Incorrect Image format Url!")
 				net.Send(ply)
 				return
 			end
-		else
+		elseif GetConVarNumber( "sprayurl_enablewhitelist" ) then
 			net.Start("sprayWarning")
-				net.WriteString("Website not Whitelisted! Allowed Websites : imgur,dropbox,puu.sh,steam,dorkly,9gag,deviantart")
+				net.WriteString("Website not Whitelisted! For more info run sprayurl_weblist on console.")
 			net.Send(ply)
 			return
 		end
@@ -711,7 +796,7 @@ if SERVER then
 				ply:CreateURLSpray(URL)
 			else
 				net.Start("sprayWarning")
-					net.WriteString("You can't place a URLSpray Yet! Wait ".. math.abs(CurTime() - SprayURL.PlayerSpray[ply:SteamID()]) )
+					net.WriteString("You can't place a URLSpray Yet! Wait ".. math.Round(math.abs(CurTime() - SprayURL.PlayerSpray[ply:SteamID()])) )
 			   	net.Send(ply)
 			end
 		else
@@ -748,3 +833,4 @@ if SERVER then
 	end
 
 end
+
