@@ -1,3 +1,4 @@
+
 //   _____                       _    _ _____  _      
 //  / ____|                     | |  | |  __ \| |     
 // | (___  _ __  _ __ __ _ _   _| |  | | |__) | |     
@@ -7,13 +8,11 @@
 //        | |               __/ |                     
 //        |_|              |___/       By FailCake :D (edunad)               
 
-
 // Changelog
-// $ If image is not found, it will display a 404image.
-// $ Added sprayurl_enablewhitelist to server
-// $ Added quickspray by doing sprayurl "<link>"
-// $ Added sprayurl_enablewhitelist to enable / disable whitelist, its now disabled by default! Yay freedom
-// $ Added sprayurl_weblist to check what websites are allowed if whitelist is enabled.
+// $Improved Queue
+// $Fixed typos
+// $Sprays now show the correct size
+// $Added More commands.
 
 function findInTable(fnd,tbl)
 		
@@ -35,6 +34,7 @@ if CLIENT then
 	CreateClientConVar( "sprayurl_texture", "https://dl.dropboxusercontent.com/u/6696045/Applications/sprayDefault.png", true, false )
 	CreateClientConVar( "sprayurl_maxretry", "5", true, false )
 	CreateClientConVar( "sprayurl_keywordban", "1", true, false )
+	CreateClientConVar( "sprayurl_maxloadtime", "10", true, false )
 	
 	local SprayEditor = SprayEditor or {}
 	
@@ -165,15 +165,6 @@ if CLIENT then
 			SprayEditor.PANEL.LblRich:AppendText( "3 = " )
 			SprayEditor.PANEL.LblRich:InsertColorChange( 180, 180, 180, 255 )
 			SprayEditor.PANEL.LblRich:AppendText( "Done!\n\n" )
-			
-			/*		RichText is bugged.
-			SprayEditor.PANEL.LblRich:InsertColorChange( 255, 255, 255, 255 )
-			SprayEditor.PANEL.LblRich:AppendText( "==== Fixing Issues ====\n\n" )
-			SprayEditor.PANEL.LblRich:InsertColorChange( 180, 180, 180, 255 )
-			SprayEditor.PANEL.LblRich:AppendText( "If you are missing textures then run this command\n" )
-			SprayEditor.PANEL.LblRich:InsertColorChange( 255, 120, 0, 255 )
-			SprayEditor.PANEL.LblRich:AppendText( [[sprayurl_clearcache]].."\n" )
-			*/
 			
 			// BANS
 				
@@ -347,6 +338,9 @@ if CLIENT then
 	ckText.BannedKeywords = ckText.BannedKeywords or {}
 	ckText.WhitelistRequestCD = ckText.WhitelistRequestCD or 0
 	
+	ckText.Status = ckText.Status or "IDLE"
+	ckText.html_mat = ckText.html_mat or nil
+	
 	// Load Banned Keywords
 	loadKeywords()
 	
@@ -362,17 +356,23 @@ if CLIENT then
 	function downloadFailed(reason)
 		print("[SprayURL] Error : " .. reason)
 		hook.Remove("Think","DL_Text")
+		ckText.Status = "IDLE"
 	end
 
 	// Heavily based on PAPC3 (CLIENT SIDE)
 	function textureDLL(url,override)
+	
+		if ckText.Status != "IDLE" then
+			ckText.SpraysDownloaded[url] = ckText.MSG_ABORT
+			return 
+		end // Busy
 	
 		if !override and ckText.cachedMaterials[url] != nil then
 			print("[SprayURL] Material ".. url .. " already downloaded.")
 			ckText.SpraysDownloaded[url] = ckText.MSG_OK
 			return
 		end 
-		
+
 		ckText.SpraysDownloaded[url] = ckText.MSG_DOWNLOADREQUEST
 		
 		print("[SprayURL] Downloading Material : " .. url)
@@ -381,48 +381,108 @@ if CLIENT then
 			ckText.pnl:Remove()
 		end
 		
-		ckText.pnl = vgui.Create("HTML")
-		ckText.pnl:SetVisible(true)
-		ckText.pnl:SetSize(ScrW(), ScrH())
-		ckText.pnl:SetPos(ScrW()-1, ScrH()-1) 
-		ckText.pnl:SetHTML([[
-		<html>
-		<style type="text/css">
-			html 
-			{			
-				overflow:hidden;
-			}
-			
-			.contain{
-				position:absolute;
-				top:-1px;
-				left:-1px;
-				width:]].. ScrW() ..[[px;
-				height:]].. ScrH() ..[[px;
-			}
-			
-			.contain img{
-				width:100%;
-			}
-			
-			img[src='Error.src']{
-			    display: none;
-			}
-		
-		</style>		
-			<body>
-				<div class="contain">
-					<img src="]]..url..[[" alt="" onerror="this.src='https://dl.dropboxusercontent.com/u/6696045/applications/imgNotFound.png'" />
-				</div>
-			</body>
-		</html>
-		]])
-	
 		local CDTime = 0
-		local OK = false
-		local LoadTime = CurTime() + 5
+		local LoadTime = CurTime() + GetConVarNumber("sprayurl_maxloadtime")
 
+		// Code from !cake :3
+		ckText.pnl = vgui.Create ("DHTML")
+		ckText.pnl:SetVisible (true)
+		ckText.pnl:NewObjectCallback ("imageLoader", "finished")
+		ckText.pnl:NewObjectCallback ("imageLoader", "error")
+		ckText.pnl:SetPos(ScrW() - 1,ScrH() - 1)
+		
+		ckText.pnl.OnCallback = function (_, objectName, methodName, args)
+			if objectName == "imageLoader" then
+				
+				if methodName == "finished" then
+					
+					if #args < 0 then return end
+					
+					if ckText.pnl == nil then 
+						ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
+						return 
+					end
+					
+					local width  = tonumber (args [1])
+					local height = tonumber (args [2])
+					
+					ckText.pnl:SetSize (width, height)
+					ckText.pnl:UpdateHTMLTexture ()
+					
+					ckText.Status = "RESIZE"
+					CDTime = CurTime() + 1
+					
+				end
+				
+				if methodName == "error" then
+					
+					if #args < 0 then return end
+					
+						print("[SprayURL] " .. args [1] )
+						
+						ckText.SpraysDownloaded[url] = ckText.MSG_ABORT
+						ckText.Status = "IDLE"
+						ckText.pnl:Remove()
+						
+					return
+				
+				end
+				
+			end
+		end
+		
+		ckText.pnl:SetHTML (
+			[[
+			<html>
+			
+				<style type="text/css">
+					html 
+					{			
+						overflow:hidden;
+					}
+					
+					body
+					{
+						padding: 0px; margin: 0px
+					}
+				</style>
+				
+				<body>
+					<script type="text/javascript">
+					
+						function imageError ()
+						{
+							imageLoader.error ("Image not found!");
+						};
+					
+						window.onerror = function (message, file, lineNumber)
+						{
+							imageLoader.error ("Unknown Error :<");
+						};
+					
+						function imageLoaded ()
+						{
+							var image = document.getElementById ("image");
+							
+							if(image.width > 2816 && image.height > 1704){
+								imageLoader.error ("Image too big! ( Max : 2816x1704 )");
+							}else{
+								imageLoader.finished (image.width, image.height);
+							}
+						};
+					
+					</script>
+					<img id="image" src="]] .. url .. [[" onerror="imageError()" onload="imageLoaded()" />
+				</body>
+			</html>
+			]]
+		)
+		
 		hook.Add("Think","DL_Text",function()
+
+			if ckText.SpraysDownloaded[url] == ckText.MSG_ABORT then
+				return	
+			end
 
 			if !IsValid(ckText.pnl) or ckText.pnl == NULL then
 				downloadFailed("Panel failed to open!")
@@ -430,35 +490,29 @@ if CLIENT then
 				return
 			end
 			
-			local html_mat = ckText.pnl:GetHTMLMaterial()
-			
-			if !ckText.pnl:IsLoading() and !OK then
-				
-				if html_mat == nil then
-					ckText.pnl:Remove()
-					downloadFailed("Failed to get HTML Material!")
-					ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
-					return
-				else
-					OK = true
-					CDTime = CurTime() + 1	
-				end
-				
-			end
-			
-			if ckText.pnl:IsLoading() and !OK then
+			if ckText.Status != "RESIZE" then
 				if LoadTime < CurTime() then
 					ckText.pnl:Remove()
 					downloadFailed("Exceded Load Time!")
 					ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
+					ckText.Status = "IDLE"
 				end
 			end
 			
-			if OK and CDTime < CurTime() then
+			if ckText.Status == "RESIZE" and CDTime < CurTime() and !ckText.pnl:IsLoading() then
 				
-				local vertex_mat = CreateMaterial(url, ckText.shaderType,ckText.matdata )
 				
-				local textur = html_mat:GetTexture("$basetexture")
+				ckText.html_mat = ckText.pnl:GetHTMLMaterial()
+				
+				if ckText.html_mat == nil then
+					ckText.pnl:Remove()
+					downloadFailed("Material Not Found!")
+					ckText.SpraysDownloaded[url] = ckText.MSG_FAILED
+					return	
+				end
+				
+				local vertex_mat = CreateMaterial(url, ckText.shaderType, ckText.matdata )
+				local textur = ckText.html_mat:GetTexture("$basetexture")
 							
 				textur:Download()
 				vertex_mat:SetTexture("$basetexture", textur)	
@@ -476,6 +530,7 @@ if CLIENT then
 
 				ckText.cachedMaterials[url] = mst
 				ckText.SpraysDownloaded[url] = ckText.MSG_OK
+				ckText.Status = "IDLE"
 				
 			    ckText.pnl:Remove()
 				hook.Remove("Think","DL_Text")
@@ -560,8 +615,8 @@ if CLIENT then
 							v.SprayPos,
 							v.NormalPos,
 							Color(255,255,255,255), 
-							700,
-							700)
+							Mat:Width(),
+							Mat:Height())
 						
 						sound.Play( "player/sprayer.wav", v.SprayPos,75,100,0.3)
 						table.remove(ckText.SpraysQueue,1)
@@ -587,7 +642,7 @@ if CLIENT then
 						else
 							print("[SprayURL] Failed to create Spray (ID : " .. v.TEXT .. ")")
 							table.remove(ckText.SpraysQueue,1)
-							table.remove(ckText.SpraysDownloaded,v.TEXT)
+							table.RemoveByValue(ckText.SpraysDownloaded,v.TEXT)
 							continue
 						end
 					end
@@ -595,7 +650,7 @@ if CLIENT then
 				elseif ckText.SpraysDownloaded[v.TEXT] == ckText.MSG_ABORT then
 				
 					table.remove(ckText.SpraysQueue,1)
-					table.remove(ckText.SpraysDownloaded,v.TEXT)
+					table.RemoveByValue(ckText.SpraysDownloaded,v.TEXT)
 					
 					continue
 				
@@ -632,7 +687,8 @@ if CLIENT then
 			Attempts = ckText.MAX_ATTEMPTS,
 			NormalPos = NormalPos,
 			Retry = false,
-			CoolDOWN = 0
+			CoolDOWN = 0,
+			SpraySize = Vector(0,0,0)
 		})
 		
 		ckText.SpraysDownloaded[Texture] = ckText.MSG_NONE
@@ -695,7 +751,7 @@ if CLIENT then
 		end
 	end)
 	
-	concommand.Add("sprayurl_clearchache",function(ply,cmdd,args)
+	concommand.Add("sprayurl_clearcache",function(ply,cmdd,args)
 		table.Empty(ckText.cachedMaterials)
 		table.Empty(ckText.SpraysQueue)
 		table.Empty(ckText.SpraysDownloaded)
@@ -713,9 +769,10 @@ if SERVER then
 	local plymeta = FindMetaTable( "Player" )
 	if not plymeta then Error("FAILED TO FIND PLAYER TABLE") return end
 
-	CreateConVar( "sprayurl_plyCooldown", "15", FCVAR_ARCHIVE || FCVAR_SERVER_CAN_EXECUTE, "Sets the Cooldown for sprayURL to the players" )
+	CreateConVar( "sprayurl_plyCooldown", "15", FCVAR_ARCHIVE || FCVAR_SERVER_CAN_EXECUTE, "Sets the Cooldown for sprayURL to the players." )
 	CreateConVar( "sprayurl_enablewhitelist", "0", FCVAR_ARCHIVE || FCVAR_SERVER_CAN_EXECUTE, "Enable / Disable Website whitelist." )
-
+	CreateConVar( "sprayurl_adminonly", "0", FCVAR_ARCHIVE || FCVAR_SERVER_CAN_EXECUTE, "Only Admins can URLSpray." )
+	
 	util.AddNetworkString( "sprayURL" )
 	util.AddNetworkString( "sprayRequest" )
 	util.AddNetworkString( "sprayWarning" )
@@ -815,6 +872,15 @@ if SERVER then
 			
 			if !self:IsAdmin() || !self:IsSuperAdmin() then
 				SprayURL.PlayerSpray[self:SteamID()] = CurTime() + GetConVarNumber( "sprayURL_plyCooldown" )
+			end
+			
+			if GetConVarNumber( "sprayurl_adminonly" ) == 1 then
+				if !self:IsAdmin() || !self:IsSuperAdmin() then
+					net.Start("sprayWarning")
+						net.WriteString("Only admins can URLSpray")
+			   		net.Send(self)
+					return	
+				end
 			end
 			
 			self:EmitSound("buttons/combine_button1.wav")
