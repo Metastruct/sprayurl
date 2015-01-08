@@ -1,4 +1,3 @@
-
 //   _____                       _    _ _____  _      
 //  / ____|                     | |  | |  __ \| |     
 // | (___  _ __  _ __ __ _ _   _| |  | | |__) | |     
@@ -8,11 +7,9 @@
 //        | |               __/ |                     
 //        |_|              |___/       By FailCake :D (edunad)               
 
-// Changelog
-// $Improved Queue
-// $Fixed typos
-// $Sprays now show the correct size
-// $Added More commands.
+// Changelog :
+// $Fixed Exploits
+// $Fixed Sizes again
 
 function findInTable(fnd,tbl)
 		
@@ -328,7 +325,8 @@ if CLIENT then
 	ckText.matdata["$vertexcolor"] = 1
 	ckText.matdata["$vertexalpha"] = 1
 	ckText.matdata["$no_fullbright"] = 1
-
+	ckText.matdata["$decal"] = 1
+	
 	ckText.MSG_NONE = 0
 	ckText.MSG_OK = 1
 	ckText.MSG_FAILED = 2
@@ -386,10 +384,10 @@ if CLIENT then
 
 		// Code from !cake :3
 		ckText.pnl = vgui.Create ("DHTML")
-		ckText.pnl:SetVisible (true)
+		ckText.pnl:SetVisible (false)
 		ckText.pnl:NewObjectCallback ("imageLoader", "finished")
 		ckText.pnl:NewObjectCallback ("imageLoader", "error")
-		ckText.pnl:SetPos(ScrW() - 1,ScrH() - 1)
+		ckText.pnl:SetPos(0,0)
 		
 		ckText.pnl.OnCallback = function (_, objectName, methodName, args)
 			if objectName == "imageLoader" then
@@ -405,12 +403,11 @@ if CLIENT then
 					
 					local width  = tonumber (args [1])
 					local height = tonumber (args [2])
-					
-					ckText.pnl:SetSize (width, height)
-					ckText.pnl:UpdateHTMLTexture ()
-					
+						
+					PrintTable(args)
+					ckText.pnl:SetSize (width,height)
 					ckText.Status = "RESIZE"
-					CDTime = CurTime() + 1
+					CDTime = CurTime() + 0.5
 					
 				end
 				
@@ -434,20 +431,22 @@ if CLIENT then
 		ckText.pnl:SetHTML (
 			[[
 			<html>
-			
+				<head>
+				</head>
+				
 				<style type="text/css">
 					html 
 					{			
 						overflow:hidden;
 					}
 					
-					body
-					{
-						padding: 0px; margin: 0px
+					#image{
+						max-width:512px;
+						max-height:512px;
 					}
 				</style>
 				
-				<body>
+				<body style="padding: 0px; margin: 0px;">
 					<script type="text/javascript">
 					
 						function imageError ()
@@ -464,15 +463,19 @@ if CLIENT then
 						{
 							var image = document.getElementById ("image");
 							
-							if(image.width > 2816 && image.height > 1704){
+							if(image.width > 2816 && image.Height > 1704){
 								imageLoader.error ("Image too big! ( Max : 2816x1704 )");
 							}else{
-								imageLoader.finished (image.width, image.height);
+								imageLoader.finished (image.Width, image.Height);
 							}
 						};
 					
 					</script>
-					<img id="image" src="]] .. url .. [[" onerror="imageError()" onload="imageLoaded()" />
+					
+				
+					<img id="image" src="]] .. url .. [[" onerror="imageError()" onload="imageLoaded()" img.onabort="imageError()" />
+					
+					
 				</body>
 			</html>
 			]]
@@ -501,7 +504,7 @@ if CLIENT then
 			
 			if ckText.Status == "RESIZE" and CDTime < CurTime() and !ckText.pnl:IsLoading() then
 				
-				
+				ckText.pnl:UpdateHTMLTexture ()
 				ckText.html_mat = ckText.pnl:GetHTMLMaterial()
 				
 				if ckText.html_mat == nil then
@@ -512,23 +515,12 @@ if CLIENT then
 				end
 				
 				local vertex_mat = CreateMaterial(url, ckText.shaderType, ckText.matdata )
-				local textur = ckText.html_mat:GetTexture("$basetexture")
+				local textur = ckText.pnl:GetHTMLMaterial ():GetTexture ("$basetexture")
 							
 				textur:Download()
 				vertex_mat:SetTexture("$basetexture", textur)	
-				textur:Download()
 				
-				local mst = CreateMaterial(url, ckText.shaderType,ckText.matdata)
-				mst:SetTexture("$basetexture", textur)
-				
-				if mst == nil or mst:Width() <= 0 or mst:Height() <= 0 or mst:IsError( ) then
-					ckText.pnl:Remove()
-					downloadFailed("Image Error or too small!")
-					ckText.SpraysDownloaded[url] = ckText.MSG_ABORT
-					return
-				end
-
-				ckText.cachedMaterials[url] = mst
+				ckText.cachedMaterials[url] = vertex_mat
 				ckText.SpraysDownloaded[url] = ckText.MSG_OK
 				ckText.Status = "IDLE"
 				
@@ -615,8 +607,8 @@ if CLIENT then
 							v.SprayPos,
 							v.NormalPos,
 							Color(255,255,255,255), 
-							Mat:Width(),
-							Mat:Height())
+							1,
+							1)
 						
 						sound.Play( "player/sprayer.wav", v.SprayPos,75,100,0.3)
 						table.remove(ckText.SpraysQueue,1)
@@ -687,8 +679,7 @@ if CLIENT then
 			Attempts = ckText.MAX_ATTEMPTS,
 			NormalPos = NormalPos,
 			Retry = false,
-			CoolDOWN = 0,
-			SpraySize = Vector(0,0,0)
+			CoolDOWN = 0
 		})
 		
 		ckText.SpraysDownloaded[Texture] = ckText.MSG_NONE
@@ -835,7 +826,8 @@ if SERVER then
 		local extension = URL:lower():sub(-4)
 		
 		if findInTable(URL,SprayURL.AllowedWebsites) || GetConVarNumber( "sprayurl_enablewhitelist" ) == 0 then
-			if !extension:sub(1,1) == "." or !SprayURL.AllowedFormats[extension:sub(2)] and !findInTable(URL,SprayURL.CustomFormats) then
+			if URL:match("^(https?://[%w/_%-%.%%]+)$") == nil then
+					
 				net.Start("sprayWarning")
 						net.WriteString("Incorrect Image format Url!")
 				net.Send(ply)
@@ -899,4 +891,5 @@ if SERVER then
 	end
 
 end
+
 
