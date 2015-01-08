@@ -8,8 +8,7 @@
 //        |_|              |___/       By FailCake :D (edunad)               
 
 // Changelog :
-// $Fixed Exploits
-// $Fixed Sizes again
+// Fixed Singleplayer
 
 function findInTable(fnd,tbl)
 		
@@ -277,7 +276,9 @@ if CLIENT then
 		else
 			
 			local dt = file.Read( "sprayurl/keywords.txt", "DATA" )
-			local dtparse = string.split(dt,"\n")
+			
+			if dt == nil then return end
+			local dtparse = string.Explode("\n",dt,false)
 			
 			if dtparse == nil || #dtparse <= 0 then
 				file.Write( "sprayurl/keywords.txt", "porn\nhentai\nsex" )
@@ -826,7 +827,7 @@ if SERVER then
 		local extension = URL:lower():sub(-4)
 		
 		if findInTable(URL,SprayURL.AllowedWebsites) || GetConVarNumber( "sprayurl_enablewhitelist" ) == 0 then
-			if URL:match("^(https?://[%w/_%-%.%%]+)$") == nil then
+			if URL:match("^(https?://[%w/_%-%.%%]+)$") == nil or string.find(URL,".html") or string.find(URL,".php") then
 					
 				net.Start("sprayWarning")
 						net.WriteString("Incorrect Image format Url!")
@@ -891,5 +892,4 @@ if SERVER then
 	end
 
 end
-
 
