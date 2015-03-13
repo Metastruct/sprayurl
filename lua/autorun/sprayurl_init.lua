@@ -393,24 +393,27 @@ if CLIENT then
 			end
 		end
 
-		ckText.pnl:SetHTML(
-			[[
+		ckText.pnl:SetHTML(string.format([[<!DOCTYPE html>
 			<html>
 				<head>
+					<title>SprayURL</title>
+					<style type="text/css">
+						html {			
+							overflow:hidden;
+						}
+						
+						body {
+							padding:0px;
+							margin:0px;
+						}
+
+						#image {
+							max-width:512px;
+							max-height:512px;
+						}
+					</style>
 				</head>
-
-				<style type="text/css">
-					html {			
-						overflow:hidden;
-					}
-
-					#image {
-						max-width:512px;
-						max-height:512px;
-					}
-				</style>
-
-				<body style="padding: 0px; margin: 0px;">
+				<body>
 					<script type="text/javascript">
 						function imageError()
 						{
@@ -434,10 +437,10 @@ if CLIENT then
 						};
 					</script>
 
-					<img id="image" src="]] .. url .. [[" onerror="imageError()" onload="imageLoaded()" img.onabort="imageError()" />
+					<img id="image" alt="SprayURL image" src="%s" onerror="imageError()" onload="imageLoaded()" onabort="imageError()" />
 				</body>
 			</html>
-			]]
+			]], url)
 		)
 
 		hook.Add("Think", "DL_Text", function()
